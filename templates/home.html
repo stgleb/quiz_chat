@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+    <title></title>
+
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+    <script>
+        $( document ).ready(function() {
+
+            var conn;
+            var command = $("#command");
+            var log = $("#log");
+
+            $("#send_command").click(function(){
+                conn.send(command.val());
+                command.val("");
+            });
+
+            $("#join_room").onclick(function(){
+                conn = new WebSocket("ws://{{.Host}}/ws");
+                conn.onopen = function() {
+                    console.log("Connected");
+                };
+                conn.onclose = function(evt) {
+                    console.log("Connection closed");
+                };
+                conn.onmessage = function(evt) {
+                    log.val(log.val() + '\n' + evt.data);
+                }
+            })
+        });
+
+    </script>
+</head>
+<body>
+
+<h1>Hello, {{.Username}}</h1>
+<p>Free rooms: {{.RoomsCount}}</p>
+<input type="submit" value="Submit" id="join_room">
+</body>
+</html>
