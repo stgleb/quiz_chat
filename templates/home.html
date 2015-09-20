@@ -11,32 +11,71 @@
             var conn;
             var command = $("#command");
             var log = $("#log");
+            $("#join_div").show()
+            $("#question_div").hide()
+            $("#result_div").hide()
 
             $("#send_command").click(function(){
                 conn.send(command.val());
                 command.val("");
             });
 
-            $("#join_room").onclick(function(){
-                conn = new WebSocket("ws://{{.Host}}/ws");
-                conn.onopen = function() {
-                    console.log("Connected");
-                };
-                conn.onclose = function(evt) {
-                    console.log("Connection closed");
-                };
-                conn.onmessage = function(evt) {
-                    log.val(log.val() + '\n' + evt.data);
-                }
+            $("#join_room").click(
+                    function(){
+                        conn = new WebSocket("ws://{{.Host}}/join");
+                        console.log("Connecting to ws")
+
+                        conn.onopen = function() {
+                            console.log("Connected");
+                        };
+                        conn.onclose = function(evt) {
+                            console.log("Connection closed");
+                        };
+                        conn.onmessage = function(evt) {
+                            console.log(evt)
+                            if(evt.data == "full") {
+                                $("#join_div").hide()
+                                $("#question_div").show()
+                                $("#result_div").hide()
+                            } else if (evt.data == "question") {
+                                conn.read
+                            }
+                            else if(evt.data == "results") {
+                                $("#join_div").hide()
+                                $("#question_div").hide()
+                                $("#result_div").show()
+                            }
+                        }
             })
+
+            $("#ask_question").click(
+                    function(){
+                        var question = $("#question").value
+                        conn.send("question")
+                        conn.send(serialize(
+                                {
+                                    "question": question,
+                                    "answer": answer,
+                                    "playerName": ""
+                                }))
+                    }
+            )
         });
 
     </script>
 </head>
 <body>
-
 <h1>Hello, {{.Username}}</h1>
-<p>Free rooms: {{.RoomsCount}}</p>
-<input type="submit" value="Submit" id="join_room">
+<div id="join_div">
+    <p>Free rooms: {{.RoomsCount}}</p>
+    <input type="submit" value="Submit" id="join_room">
+</div>
+<div id="question_div">
+    <input type="text" value="" id="question">
+    <input type="text" value="" id="answer">
+    <input type="submit" value="Submit" id="ask_question">
+</div>
+<div id="result_div">
+</div>
 </body>
 </html>

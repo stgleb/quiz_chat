@@ -19,7 +19,8 @@ var store = sessions.NewCookieStore([]byte(
                                     securecookie.GenerateRandomKey(256)))
 var freeRooms = make(map[string]*room)
 var allRooms = make(map[string]*room)
-var RoomsCount int
+var roomsCount int
+var roomCapacity int
 
 /*
     Structures used
@@ -39,6 +40,9 @@ type room struct {
 
     // Unregister requests from connections.
     leaveChannel chan *playerConn
+
+    //Channel for transferring questions
+    questionChannel chan Question
 }
 
 type Player struct {
@@ -49,8 +53,18 @@ type playerConn struct {
     ws *websocket.Conn
     player *Player
     room *room
+    question string
 }
 
+type Message struct{
+    message string
+}
+
+type Question struct {
+    question string
+    answer string
+    playerName string
+}
 /*
     Utility function generates random id.
 */
@@ -72,8 +86,10 @@ func RandString(n int) string {
 func (pc *playerConn) sendState() {
     go func() {
         msg := "msg"
+        fmt.Println("Send message")
         err := pc.ws.WriteMessage(websocket.TextMessage, []byte(msg))
         if err != nil {
+            fmt.Println("Leave due to error")
             pc.room.leaveChannel <- pc
             pc.ws.Close()
         }
@@ -88,24 +104,58 @@ func (r *room) updateAllPlayers() {
 
 // Run the room in goroutine
 func (r *room) run() {
+    fmt.Println("Room running")
     for {
         select {
         case c := <-r.joinChannel:
             r.playerConns[c] = true
-            r.updateAllPlayers()
+//            r.updateAllPlayers()
+            // if room is full - delete from freeRooms
+            fmt.Println("Join channel")
+            fmt.Println(len(r.playerConns))
+            fmt.Println(roomCapacity)
 
-        // if room is full - delete from freeRooms
-            if len(r.playerConns) == 2 {
+            if len(r.playerConns) == roomCapacity {
+                fmt.Println("Room ", r.name, " is full")
+                for pc, _ := range r.playerConns {
+                    fmt.Println("Send acknowledgement to player ", pc.player.name)
+
+                    msg := "full"
+                    err := pc.ws.WriteMessage(websocket.TextMessage, []byte(msg))
+                    if err != nil {
+                        fmt.Println("Leave due to error")
+                        fmt.Println("Error", err)
+                        pc.room.leaveChannel <- pc
+                        pc.ws.Close()
+                    }
+                }
                 delete(freeRooms, r.name)
             }
-
+        case c:= <- r.questionChannel:
+            var questions [roomCapacity]Question
+            append(questions, c)
+            fmt.Println("Question received ", c)
+            if len(questions) == roomCapacity - 1 {
+                // Send all questions over all players
+                fmt.Println("Notify all players")
+                for q := range questions {
+                    for pc, _ := range room.playerConns {
+                        if pc.player.name != c.playerName {
+                            pc.ws.WriteMessage("question")
+                            pc.ws.WriteJSON(q)
+                        }
+                    }
+                }
+            }
         case c := <-r.leaveChannel:
+            fmt.Println("Leave")
             r.updateAllPlayers()
             delete(r.playerConns, c)
             if len(r.playerConns) == 0 {
                 goto Exit
             }
         case <-r.updateAll:
+            fmt.Println("Update all")
             r.updateAllPlayers()
         }
     }
@@ -115,8 +165,27 @@ func (r *room) run() {
     // delete room
     delete(allRooms, r.name)
     delete(freeRooms, r.name)
-    RoomsCount -= 1
+    roomsCount -= 1
     log.Print("Room closed:", r.name)
+}
+
+func (pc *playerConn) executeCommand(command string) {
+        if command == "question" {
+            var question Question
+            var err interface{}
+            err = pc.ws.ReadJSON(&question)
+
+            if err != nil {
+                fmt.Println("Error, websocket will be closed")
+                pc.ws.Close()
+                break
+            }
+
+            // Send questions over all player
+            question.playerName = pc.player.name
+            pc.room.questionChannel <- question
+        }
+
 }
 
 func (pc *playerConn) receiver() {
@@ -125,11 +194,12 @@ func (pc *playerConn) receiver() {
         if err != nil {
             break
         }
-        log.Println("Playeer conn with player name %s has executed command %s",
-                    pc.player.name, command)
+        fmt.Println("Playeer conn with player name ", pc.player.name,
+                    " has executed command", command)
         // execute a command
         // pc.Command(string(command))
         // update all conn
+        pc.executeCommand(command)
         pc.room.updateAll <- true
     }
     pc.room.leaveChannel <- pc
@@ -152,7 +222,7 @@ func newRoom() *room {
     // run room
     go room.run()
 
-    RoomsCount += 1
+    roomsCount += 1
     return room
 }
 
@@ -163,7 +233,7 @@ func newPlayer(username string) *Player{
 }
 
 func newPlayerConn(ws *websocket.Conn, player *Player, room *room) *playerConn {
-    pc := &playerConn{ws, player, room}
+    pc := &playerConn{ws, player, room, ""}
     go pc.receiver()
     return pc
 }
@@ -181,14 +251,18 @@ func homeHandler(c http.ResponseWriter, r *http.Request) {
     if username == nil {
         fmt.Println("Redirecting to login")
         http.Redirect(c, r, "/login", 302)
+        return
     }
+
+    user_name := username.([]string)[0]
+    fmt.Println(user_name)
 
     data := struct {
         Host       string
         RoomsCount int
         Username interface{}
         rooms map[string]*room
-    }{r.Host, 0, username, freeRooms}
+    }{r.Host, 0, user_name, freeRooms}
     homeTempl.Execute(c, data)
 }
 
@@ -230,8 +304,9 @@ func loginHandler(c http.ResponseWriter,r *http.Request) {
     }
 }
 
-func joinOrCreateroom(c http.ResponseWriter,r *http.Request) {
+func joinOrCreateRoom(c http.ResponseWriter,r *http.Request) {
     ws, err := websocket.Upgrade(c, r, nil, 1024, 1024)
+    fmt.Println("Join room")
     if _, ok := err.(websocket.HandshakeError); ok {
         http.Error(c, "Not a websocket handshake", 400)
         return
@@ -242,14 +317,8 @@ func joinOrCreateroom(c http.ResponseWriter,r *http.Request) {
     /*
         TODO: should be extracted to separate function.
     */
-
-    session, err := store.Get(r, "dating")
-    username := session.Values["username"]
-
-    if err != nil {
-        http.Error(c, err.Error(), 500)
-        return
-    }
+    session, _ := store.Get(r, "dating")
+    user_data := session.Values["username"]
 
     var freeRoom *room
     if len(freeRooms) != 0 {
@@ -258,20 +327,23 @@ func joinOrCreateroom(c http.ResponseWriter,r *http.Request) {
             break
         }
     } else {
+        fmt.Println("New room!!!")
         freeRoom = newRoom()
     }
-
-    player := newPlayer(username.(string))
+    fmt.Println("Username ", user_data.([]string)[0],
+                " has connected")
+    username := user_data.([]string)[0]
+    player := newPlayer(username)
     pConn := newPlayerConn(ws, player, freeRoom)
     // Join Player to room
     freeRoom.joinChannel <- pConn
 }
 
 func main() {
-    fmt.Printf("Hello")
+    roomCapacity = 2
     http.HandleFunc("/", homeHandler)
     http.HandleFunc("/login", loginHandler)
-    http.HandleFunc("/rooms", joinOrCreateroom)
+    http.HandleFunc("/join", joinOrCreateRoom)
 
     http.HandleFunc("/static/", func(w http.ResponseWriter, r *http.Request) {
         http.ServeFile(w, r, r.URL.Path[1:])
