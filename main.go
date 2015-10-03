@@ -141,7 +141,7 @@ func (r *room) run() {
                 for q := range questions {
                     for pc, _ := range room.playerConns {
                         if pc.player.name != c.playerName {
-                            pc.ws.WriteMessage("question")
+                            pc.ws.WriteMessage(websocket.TextMessage, "question")
                             pc.ws.WriteJSON(q)
                         }
                     }
