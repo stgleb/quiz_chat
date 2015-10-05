@@ -4,11 +4,14 @@ import (
     "html/template"
     "log"
     "net/http"
-    "github.com/gorilla/websocket"
     "crypto/rand"
     "fmt"
+    "io"
+    "io/ioutil"
+    "os"
     "github.com/gorilla/sessions"
     "github.com/gorilla/securecookie"
+    "github.com/gorilla/websocket"
 )
 
 const (
@@ -21,6 +24,39 @@ var freeRooms = make(map[string]*room)
 var allRooms = make(map[string]*room)
 var roomsCount int
 var roomCapacity int
+
+
+// Initializing logging objects
+var (
+    Trace   *log.Logger
+    Info    *log.Logger
+    Warning *log.Logger
+    Error   *log.Logger
+)
+
+func Init(
+    traceHandle io.Writer,
+    infoHandle io.Writer,
+    warningHandle io.Writer,
+    errorHandle io.Writer) {
+
+    Trace = log.New(traceHandle,
+        "TRACE: ",
+        log.Ldate|log.Ltime|log.Lshortfile)
+
+    Info = log.New(infoHandle,
+        "INFO: ",
+        log.Ldate|log.Ltime|log.Lshortfile)
+
+    Warning = log.New(warningHandle,
+        "WARNING: ",
+        log.Ldate|log.Ltime|log.Lshortfile)
+
+    Error = log.New(errorHandle,
+        "ERROR: ",
+        log.Ldate|log.Ltime|log.Lshortfile)
+}
+
 
 /*
     Structures used
@@ -132,16 +168,16 @@ func (r *room) run() {
                 delete(freeRooms, r.name)
             }
         case c:= <- r.questionChannel:
-            var questions [roomCapacity]Question
-            append(questions, c)
+            questions := make([]Question, roomCapacity, roomCapacity * 2)
+            questions = append(questions, c)
             fmt.Println("Question received ", c)
             if len(questions) == roomCapacity - 1 {
                 // Send all questions over all players
                 fmt.Println("Notify all players")
                 for q := range questions {
-                    for pc, _ := range room.playerConns {
+                    for pc, _ := range r.playerConns {
                         if pc.player.name != c.playerName {
-                            pc.ws.WriteMessage(websocket.TextMessage, "question")
+                            pc.ws.WriteMessage(websocket.TextMessage, []byte("question"))
                             pc.ws.WriteJSON(q)
                         }
                     }
@@ -178,7 +214,7 @@ func (pc *playerConn) executeCommand(command string) {
             if err != nil {
                 fmt.Println("Error, websocket will be closed")
                 pc.ws.Close()
-                break
+                return
             }
 
             // Send questions over all player
@@ -199,7 +235,7 @@ func (pc *playerConn) receiver() {
         // execute a command
         // pc.Command(string(command))
         // update all conn
-        pc.executeCommand(command)
+        pc.executeCommand(string(command))
         pc.room.updateAll <- true
     }
     pc.room.leaveChannel <- pc
@@ -340,6 +376,8 @@ func joinOrCreateRoom(c http.ResponseWriter,r *http.Request) {
 }
 
 func main() {
+    Init(ioutil.Discard, os.Stdout, os.Stdout, os.Stderr)
+
     roomCapacity = 2
     http.HandleFunc("/", homeHandler)
     http.HandleFunc("/login", loginHandler)
