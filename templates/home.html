@@ -32,15 +32,20 @@
                             console.log("Connection closed");
                         };
                         conn.onmessage = function(evt) {
-                            console.log(evt)
-                            if(evt.data == "full") {
+                            console.log(evt.data)
+                            message = JSON.parse(evt.data)
+
+                            if(message.Cmd == "full") {
+                                console.log("Command: " + message.Cmd)
                                 $("#join_div").hide()
                                 $("#question_div").show()
                                 $("#result_div").hide()
-                            } else if (evt.data == "question") {
-                                conn.read
+                            } else if (message.Cmd == "question") {
+                                console.log("Command: " + message.Cmd)
+                                command.log(message.Payload)
                             }
-                            else if(evt.data == "results") {
+                            else if(message.Cmd == "results") {
+                                console.log("Command: " + message.Cmd)
                                 $("#join_div").hide()
                                 $("#question_div").hide()
                                 $("#result_div").show()
@@ -50,14 +55,18 @@
 
             $("#ask_question").click(
                     function(){
-                        var question = $("#question").value
-                        conn.send("question")
-                        conn.send(serialize(
-                                {
-                                    "question": question,
-                                    "answer": answer,
-                                    "playerName": ""
-                                }))
+                        var question = $("#question").val();
+                        var answer = $("#answer").val();
+
+                        var q = JSON.stringify(
+                            {
+                                    "Question": question,
+                                    "Answer": answer,
+                                    "PlayerName": "John Dow"
+                            }
+                        );
+                        conn.send("question");
+                        conn.send(q);
                     }
             )
         });
@@ -73,7 +82,7 @@
 <div id="question_div">
     <input type="text" value="" id="question">
     <input type="text" value="" id="answer">
-    <input type="submit" value="Submit" id="ask_question">
+    <input type="button" value="Submit" id="ask_question">
 </div>
 <div id="result_div">
 </div>
