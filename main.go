@@ -279,6 +279,7 @@ func newRoom() *room {
         updateAll:   make(chan bool),
         joinChannel:        make(chan *playerConn),
         leaveChannel:       make(chan *playerConn),
+        questionChannel: make(chan Question),
         questions: make([]Question, roomCapacity, roomCapacity * 2),
     }
 
@@ -422,6 +423,7 @@ func joinOrCreateRoom(c http.ResponseWriter,r *http.Request) {
     username := user_data.([]string)[0]
     player := newPlayer(username)
     pConn := newPlayerConn(ws, player, freeRoom)
+
     // Join Player to room
     freeRoom.joinChannel <- pConn
 }
