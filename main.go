@@ -85,6 +85,8 @@ type room struct {
     //Channel for transferring questions
     questionChannel chan Question
 
+    answerChannel chan []Question
+
     questions []Question
 
     questionMap map[string]Question
@@ -260,6 +262,22 @@ func executeCommand(pc *playerConn, command string) {
             Info.Println("Question channel length : ", len(pc.room.questionChannel))
             pc.room.questionChannel <- question
         }
+
+        if command == "answers" {
+            var err interface{}
+            var answers = make([]Question, roomCapacity - 1, roomCapacity - 1)
+            err = pc.ws.ReadJSON(&answers)
+
+            if err != nil {
+                Info.Println("Error, websocket will be closed")
+                pc.ws.Close()
+                return
+            }
+
+            Info.Println("Questions and answers: ", answers)
+
+            // TODO: send questions slice to answersChannel and add it processing.
+        }
 }
 
 func (pc *playerConn) receiver() {
@@ -288,6 +306,7 @@ func newRoom() *room {
         joinChannel:        make(chan *playerConn),
         leaveChannel:       make(chan *playerConn),
         questionChannel: make(chan Question),
+        answerChannel: make(chan []Question),
         questions: make([]Question, roomCapacity * 2, roomCapacity * 2),
         questionMap: make(map[string]Question, roomCapacity * 2),
     }

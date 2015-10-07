@@ -9,6 +9,7 @@
         $( document ).ready(function() {
 
             var conn;
+            var questionCount = 0;
             var command = $("#command");
             var log = $("#log");
             $("#join_div").show()
@@ -44,6 +45,7 @@
                             } else if (message.Cmd == "question") {
                                 console.log("Command: " + message.Cmd);
                                 console.log(message.Payload);
+                                questionCount = message.Payload.length;
                                 $("#join_div").hide();
                                 $("#question_div").hide();
                                 $("#display_questions").show();
@@ -53,11 +55,35 @@
                                 for(i = 0;i < message.Payload.length; i++) {
                                     q = message.Payload[i];
                                     console.log(message);
-                                    $("#display_questions").append("<h3>" + q.Question + "<h3/>");
-                                    $("#display_questions").append("<input id='question_" + i + "'>");
+                                    question_div = $("#display_questions")
+                                    question_div.append("<h3>" + q.Question + "<h3/>");
+                                    question_div.append("<input type='hidden' value=" + q.PlayerName +
+                                            " id='player_" + i + "'>");
+                                    question_div.append("<input type='hidden' value=" + q.Question +
+                                            " id='question_" + i + "'>");
+                                    question_div.append("<input id='answer_" + i + "'>");
                                 }
 
-                                $("#display_questions").append("<input type='button' value='Submit' id='send_answers'>")
+                                $("#display_questions").append("<input type='button' value='Submit' id='send_answers'>");
+
+                                $("#send_answers").click(
+                                    function(){
+                                        console.log("answers was sent");
+                                        var i = 0;
+                                        var pairs = [];
+
+                                        for(i = 0;i < questionCount; i++){
+                                            var question = $("#question_" + i).val();
+                                            var answer = $("#answer_" + i).val();
+                                            var playerName = $("#player_" + i).val();
+                                            pairs.push({"Question": question,
+                                                "Answer": answer,
+                                                "PlayerName": playerName});
+                                        }
+                                        conn.send("answers");
+                                        conn.send(JSON.stringify(pairs));
+                                    }
+                                 )
                             }
                             else if(message.Cmd == "results") {
                                 console.log("Command: " + message.Cmd);
@@ -67,7 +93,7 @@
                                 $("#result_div").show()
                             }
                         }
-            })
+            });
 
             $("#ask_question").click(
                     function(){
@@ -83,13 +109,7 @@
                         conn.send("question");
                         conn.send(q);
                     }
-            )
-
-            $("#send_answers").click(
-                    function(){
-                        console.log("answers was sent");
-                    }
-            )
+            );
         });
 
     </script>
