@@ -86,6 +86,8 @@ type room struct {
     questionChannel chan Question
 
     questions []Question
+
+    questionMap map[string]Question
 }
 
 type Player struct {
@@ -105,7 +107,7 @@ type Message struct{
 
 type Command struct {
     Cmd string
-    Payload string
+    Payload interface{}
     Sender string
 }
 
@@ -155,7 +157,6 @@ func (r *room) updateAllPlayers() {
 func (r *room) run() {
     Info.Println("Room is running")
     // make buffer fo questions
-    questions := make([]Question, roomCapacity, roomCapacity * 2)
 
     for {
         select {
@@ -190,25 +191,32 @@ func (r *room) run() {
                 }
             case questionReceived := <-r.questionChannel:
                 Info.Println("Question received ", questionReceived)
-                r.questions = append(r.questions, questionReceived)
-
-                if len(r.questions) == roomCapacity - 1 {
+                r.questionMap[questionReceived.PlayerName] = questionReceived
+                Info.Println("Question buffer len is ", len(r.questionMap))
+                Info.Println(r.questionMap)
+                if len(r.questionMap) == roomCapacity {
                     // Send all questions over all players
                     Info.Println("Notify all players")
-                    for _, q := range r.questions {
-                        for pc, _ := range r.playerConns {
-                            if pc.player.name != questionReceived.PlayerName {
-                                cmd := &Command{
-                                    Cmd: "question",
-                                    Payload: q.Question,
-                                    Sender: q.PlayerName,
-                                }
-                                pc.ws.WriteJSON(cmd)
+                    for pc, _ := range r.playerConns {
+                        questionsList := make([]Question, 0, roomCapacity - 1)
+
+                        for _, question := range r.questionMap {
+                            if pc.player.name != question.PlayerName {
+                                Info.Println("Append question to list")
+                                questionsList = append(questionsList, question)
                             }
                         }
+                        Info.Println("Question list to send is ", questionsList)
+                        cmd := &Command{
+                                    Cmd: "question",
+                                    Payload: questionsList,
+                                    Sender: "",
+                        }
+                        Info.Println("Send question map to player ", pc.player.name)
+                        pc.ws.WriteJSON(cmd)
                     }
-                    // clear questions buffer for room
-                    questions = questions[0:0]
+                    Info.Println("!!!!", len(r.questionMap))
+                    // r.questionMap = make(map[string]Question, roomCapacity)
                 }
             case c := <-r.leaveChannel:
                 Info.Println("Leave channel")
@@ -280,7 +288,8 @@ func newRoom() *room {
         joinChannel:        make(chan *playerConn),
         leaveChannel:       make(chan *playerConn),
         questionChannel: make(chan Question),
-        questions: make([]Question, roomCapacity, roomCapacity * 2),
+        questions: make([]Question, roomCapacity * 2, roomCapacity * 2),
+        questionMap: make(map[string]Question, roomCapacity * 2),
     }
 
     allRooms[name] = room
@@ -415,8 +424,10 @@ func joinOrCreateRoom(c http.ResponseWriter,r *http.Request) {
             break
         }
     } else {
-        Info.Println("New room!!!")
         freeRoom = newRoom()
+        Info.Println("Create new room", freeRoom.name)
+        freeRooms[freeRoom.name] = freeRoom
+        Info.Println("Free rooms ", freeRooms)
     }
     Info.Println("Username ", user_data.([]string)[0],
                 " has connected")
@@ -431,7 +442,7 @@ func joinOrCreateRoom(c http.ResponseWriter,r *http.Request) {
 func main() {
     Init(ioutil.Discard, os.Stdout, os.Stdout, os.Stderr)
 
-    roomCapacity = 1
+    roomCapacity = 2
     http.HandleFunc("/", homeHandler)
     http.HandleFunc("/login", loginHandler)
     http.HandleFunc("/join", joinOrCreateRoom)

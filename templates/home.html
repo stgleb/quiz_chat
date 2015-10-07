@@ -32,22 +32,38 @@
                             console.log("Connection closed");
                         };
                         conn.onmessage = function(evt) {
-                            console.log(evt.data)
-                            message = JSON.parse(evt.data)
+                            console.log(evt.data);
+                            message = JSON.parse(evt.data);
 
                             if(message.Cmd == "full") {
-                                console.log("Command: " + message.Cmd)
-                                $("#join_div").hide()
-                                $("#question_div").show()
-                                $("#result_div").hide()
+                                console.log("Command: " + message.Cmd);
+                                $("#join_div").hide();
+                                $("#question_div").show();
+                                $("#display_questions").hide();
+                                $("#result_div").hide();
                             } else if (message.Cmd == "question") {
-                                console.log("Command: " + message.Cmd)
-                                command.log(message.Payload)
+                                console.log("Command: " + message.Cmd);
+                                console.log(message.Payload);
+                                $("#join_div").hide();
+                                $("#question_div").hide();
+                                $("#display_questions").show();
+                                $("#result_div").hide();
+
+                                var i = 0;
+                                for(i = 0;i < message.Payload.length; i++) {
+                                    q = message.Payload[i];
+                                    console.log(message);
+                                    $("#display_questions").append("<h3>" + q.Question + "<h3/>");
+                                    $("#display_questions").append("<input id='question_" + i + "'>");
+                                }
+
+                                $("#display_questions").append("<input type='button' value='Submit' id='send_answers'>")
                             }
                             else if(message.Cmd == "results") {
-                                console.log("Command: " + message.Cmd)
-                                $("#join_div").hide()
-                                $("#question_div").hide()
+                                console.log("Command: " + message.Cmd);
+                                $("#join_div").hide();
+                                $("#question_div").hide();
+                                $("#display_questions").hide();
                                 $("#result_div").show()
                             }
                         }
@@ -56,17 +72,22 @@
             $("#ask_question").click(
                     function(){
                         var question = $("#question").val();
-                        var answer = $("#answer").val();
 
                         var q = JSON.stringify(
                             {
                                     "Question": question,
-                                    "Answer": answer,
+                                    "Answer": "",
                                     "PlayerName": "John Dow"
                             }
                         );
                         conn.send("question");
                         conn.send(q);
+                    }
+            )
+
+            $("#send_answers").click(
+                    function(){
+                        console.log("answers was sent");
                     }
             )
         });
@@ -81,8 +102,11 @@
 </div>
 <div id="question_div">
     <input type="text" value="" id="question">
-    <input type="text" value="" id="answer">
+    <h3>Question:</h3>
     <input type="button" value="Submit" id="ask_question">
+</div>
+<div id="display_questions">
+
 </div>
 <div id="result_div">
 </div>
