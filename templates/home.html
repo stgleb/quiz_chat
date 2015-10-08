@@ -87,10 +87,21 @@
                             }
                             else if(message.Cmd == "results") {
                                 console.log("Command: " + message.Cmd);
+                                questionCount = message.Payload.length;
                                 $("#join_div").hide();
                                 $("#question_div").hide();
                                 $("#display_questions").hide();
-                                $("#result_div").show()
+                                $("#result_div").show();
+
+                                var i = 0;
+                                for(i = 0;i < message.Payload.length; i++) {
+                                    q = message.Payload[i];
+                                    console.log(message);
+                                    result_div = $("#result_div");
+                                    result_div.append("<h3>" + q.PlayerName + "</h3>");
+                                    result_div.append("<h3>" + q.Question + " : <h3/>");
+                                    result_div.append("<h3>" + q.Answer + "</h3>");
+                                }
                             }
                         }
             });

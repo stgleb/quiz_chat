@@ -87,6 +87,8 @@ type room struct {
 
     answerChannel chan []Question
 
+    answersMap map[string][]Question
+
     questions []Question
 
     questionMap map[string]Question
@@ -220,6 +222,34 @@ func (r *room) run() {
                     Info.Println("!!!!", len(r.questionMap))
                     // r.questionMap = make(map[string]Question, roomCapacity)
                 }
+            case answers := <- r.answerChannel:
+                Info.Println("Answers received ", answers)
+                for _, answer := range answers {
+
+                    player_answers, ok := r.answersMap[answer.PlayerName]
+
+                    if ok {
+                        player_answers = append(player_answers, answer)
+                    } else {
+                        player_answers := make([]Question, 0)
+                        player_answers = append(player_answers, answer)
+                        r.answersMap[answer.PlayerName] = player_answers
+                    }
+                }
+                Info.Println("Answer map: ",r.answersMap)
+
+                if len(r.answersMap) == roomCapacity{
+                        for pc, _ := range r.playerConns{
+                            answers = r.answersMap[pc.player.name]
+                            cmd := &Command{
+                                    Cmd: "results",
+                                    Payload: answers,
+                                    Sender: "",
+                            }
+                            Info.Println("Answers ", answers," are sent to player ", pc.player.name)
+                            pc.ws.WriteJSON(cmd)
+                        }
+                }
             case c := <-r.leaveChannel:
                 Info.Println("Leave channel")
                 r.updateAllPlayers()
@@ -277,6 +307,7 @@ func executeCommand(pc *playerConn, command string) {
             Info.Println("Questions and answers: ", answers)
 
             // TODO: send questions slice to answersChannel and add it processing.
+            pc.room.answerChannel <- answers
         }
 }
 
@@ -307,6 +338,7 @@ func newRoom() *room {
         leaveChannel:       make(chan *playerConn),
         questionChannel: make(chan Question),
         answerChannel: make(chan []Question),
+        answersMap: make(map[string][]Question, roomCapacity),
         questions: make([]Question, roomCapacity * 2, roomCapacity * 2),
         questionMap: make(map[string]Question, roomCapacity * 2),
     }
