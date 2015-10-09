@@ -71,6 +71,7 @@
                                         console.log("answers was sent");
                                         var i = 0;
                                         var pairs = [];
+                                        var username = $("#username").val();
 
                                         for(i = 0;i < questionCount; i++){
                                             var question = $("#question_" + i).val();
@@ -78,7 +79,8 @@
                                             var playerName = $("#player_" + i).val();
                                             pairs.push({"Question": question,
                                                 "Answer": answer,
-                                                "PlayerName": playerName});
+                                                "PlayerName": playerName,
+                                                "Respondent": username});
                                         }
                                         conn.send("answers");
                                         conn.send(JSON.stringify(pairs));
@@ -98,7 +100,7 @@
                                     q = message.Payload[i];
                                     console.log(message);
                                     result_div = $("#result_div");
-                                    result_div.append("<h3>" + q.PlayerName + "</h3>");
+                                    result_div.append("<h3>" + q.Respondent + "</h3>");
                                     result_div.append("<h3>" + q.Question + " : <h3/>");
                                     result_div.append("<h3>" + q.Answer + "</h3>");
                                 }
@@ -125,7 +127,7 @@
 
     </script>
 </head>
-<body>
+<input type="hidden" value="{{.Username}}" id="username">
 <h1>Hello, {{.Username}}</h1>
 <div id="join_div">
     <p>Free rooms: {{.RoomsCount}}</p>

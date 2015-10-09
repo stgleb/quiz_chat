@@ -119,6 +119,7 @@ type Question struct {
     Question string
     Answer string
     PlayerName string
+    Respondent string
 }
 /*
     Utility function generates random id.
