@@ -90,6 +90,10 @@ type Room struct {
 
     questionMap map[string]Question
 
+    likesMap map[string]string
+
+    likeChannel chan Like
+
     men int
 
     women int
@@ -113,6 +117,11 @@ type playerConn struct {
 
 type Message struct{
     message string
+}
+
+type Like struct {
+    Sender string
+    Receiver string
 }
 
 type Command struct {
@@ -258,6 +267,13 @@ func (r *Room) run() {
                             pc.ws.WriteJSON(cmd)
                         }
                 }
+            case like := <- r.likeChannel:
+                Info.Println(like)
+                r.likesMap[like.Sender] = like.Receiver
+
+                if len(r.likesMap) == roomCapacity {
+                    // TODO: process likes co incidences
+                }
             case c := <-r.leaveChannel:
                 Info.Println("Leave channel")
                 r.updateAllPlayers()
@@ -318,6 +334,21 @@ func executeCommand(pc *playerConn, command string) {
 
             pc.room.answerChannel <- answers
         }
+
+        if command == "like" {
+            var like Like
+            err := pc.ws.ReadJSON(&like)
+
+            if err != nil {
+                Info.Println("Error, websocket will be closed")
+                pc.ws.Close()
+                return
+            }
+
+            Info.Println("Like was red ", like)
+
+            // TODO: send like through the like channel
+        }
 }
 
 
@@ -350,6 +381,8 @@ func newRoom() *Room {
         answerChannel: make(chan []Question),
         answersMap: make(map[string][]Question, roomCapacity),
         questionMap: make(map[string]Question, roomCapacity * 2),
+        likesMap: make(map[string]string, roomCapacity),
+        leaveChannel: make(chan Like),
         men: roomCapacity / 2,
         women: roomCapacity / 2,
     }
@@ -366,7 +399,7 @@ func newRoom() *Room {
 
 func newPlayer(username string, sex bool) *Player{
     return &Player{
-        name:        username,
+        name: username,
         sex: sex,
     }
 }

@@ -101,14 +101,36 @@
                                 for(i = 0;i < message.Payload.length; i++) {
                                     q = message.Payload[i];
                                     console.log(message);
-                                    result_div = $("#result_div");
+
+                                    result_div.append("<input type='hidden' value=" + q.PlayerName +
+                                            " id='like_" + q.Respondent + "_0'>");
+                                    result_div.append("<input type='hidden' value=" + q.Respondent +
+                                            " id='like_" + q.Respondent + "_1'>");
+                                    result_div.append('<input type="radio" name="like" value="'
+                                            + q.Respondent + '">');
                                     result_div.append("<h3> Answer from : " + q.Respondent + "</h3>");
                                     result_div.append("<h3>Answer: " + q.Answer + "</h3>");
                                 }
+                                result_div.append("<button id='like'>Like</button>")
                             }
                         }
             });
 
+            $("#like").click(
+                    function(){
+                        var player = $("input[name=like]:checked").val();
+                        var receiver = $("#"+ player + "_0").val();
+                        var sender = $("#"+ player + "_1").val();
+
+                        var like = {
+                                "sender": sender,
+                                "receiver": receiver
+                        };
+
+                        conn.send("like");
+                        conn.send(like);
+                    }
+            );
             $("#ask_question").click(
                     function(){
                         var question = $("#question").val();
