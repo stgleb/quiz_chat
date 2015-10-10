@@ -96,13 +96,14 @@
                                 $("#result_div").show();
 
                                 var i = 0;
+                                result_div = $("#result_div");
+                                result_div.append("<h3> Question :" + message.Payload[0].Question + "<h3/>");
                                 for(i = 0;i < message.Payload.length; i++) {
                                     q = message.Payload[i];
                                     console.log(message);
                                     result_div = $("#result_div");
-                                    result_div.append("<h3>" + q.Respondent + "</h3>");
-                                    result_div.append("<h3>" + q.Question + " : <h3/>");
-                                    result_div.append("<h3>" + q.Answer + "</h3>");
+                                    result_div.append("<h3> Answer from : " + q.Respondent + "</h3>");
+                                    result_div.append("<h3>Answer: " + q.Answer + "</h3>");
                                 }
                             }
                         }

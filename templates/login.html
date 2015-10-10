@@ -6,7 +6,9 @@
 </head>
 <body>
     <form action="/login" method="POST">
-        Username:<input type="text" name="username">
+        Username:<input type="text" name="username"><br>
+        <input type="radio" name="sex" value="male">Male<br>
+        <input type="radio" name="sex" value="female">Female<br>
         <input type="submit" value="Submit">
     </form>
     <p>{{.Error}}</p>

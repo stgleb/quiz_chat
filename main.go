@@ -8,10 +8,10 @@ import (
     "io"
     "io/ioutil"
     "os"
+    "sync"
     "github.com/gorilla/sessions"
     "github.com/gorilla/securecookie"
     "github.com/gorilla/websocket"
-//    "github.com/gorilla/context"
     "database/sql"
 )
 
@@ -21,11 +21,10 @@ const (
 
 var store = sessions.NewCookieStore([]byte(
                                     securecookie.GenerateRandomKey(256)))
-var freeRooms = make(map[string]*room)
-var allRooms = make(map[string]*room)
+var freeRooms = make(map[string]*Room)
+var allRooms = make(map[string]*Room)
 var roomsCount int
 var roomCapacity int
-
 
 // Initializing logging objects
 var (
@@ -67,7 +66,7 @@ func Init(
     Structures used
 */
 
-type room struct {
+type Room struct {
     name string
 
     // Registered connections.
@@ -89,19 +88,26 @@ type room struct {
 
     answersMap map[string][]Question
 
-    questions []Question
-
     questionMap map[string]Question
+
+    men int
+
+    women int
+
+    manLock sync.RWMutex
+
+    womanLock sync.RWMutex
 }
 
 type Player struct {
     name  string
+    sex bool
 }
 
 type playerConn struct {
     ws *websocket.Conn
     player *Player
-    room *room
+    room *Room
     question string
 }
 
@@ -120,6 +126,7 @@ type Question struct {
     Answer string
     PlayerName string
     Respondent string
+    respondentSex bool
 }
 /*
     Utility function generates random id.
@@ -152,14 +159,14 @@ func (pc *playerConn) sendState() {
     }()
 }
 
-func (r *room) updateAllPlayers() {
+func (r *Room) updateAllPlayers() {
     for c := range r.playerConns {
         c.sendState()
     }
 }
 
 // Run the room in goroutine
-func (r *room) run() {
+func (r *Room) run() {
     Info.Println("Room is running")
     // make buffer fo questions
 
@@ -206,7 +213,8 @@ func (r *room) run() {
                         questionsList := make([]Question, 0, roomCapacity - 1)
 
                         for _, question := range r.questionMap {
-                            if pc.player.name != question.PlayerName {
+                            if pc.player.name != question.PlayerName &&
+                                pc.player.sex != question.respondentSex{
                                 Info.Println("Append question to list")
                                 questionsList = append(questionsList, question)
                             }
@@ -220,7 +228,6 @@ func (r *room) run() {
                         Info.Println("Send question map to player ", pc.player.name)
                         pc.ws.WriteJSON(cmd)
                     }
-                    Info.Println("!!!!", len(r.questionMap))
                     // r.questionMap = make(map[string]Question, roomCapacity)
                 }
             case answers := <- r.answerChannel:
@@ -239,7 +246,7 @@ func (r *room) run() {
                 }
                 Info.Println("Answer map: ",r.answersMap)
 
-                if len(r.answersMap) == roomCapacity{
+                if len(r.answersMap) == roomCapacity {
                         for pc, _ := range r.playerConns{
                             answers = r.answersMap[pc.player.name]
                             cmd := &Command{
@@ -274,6 +281,7 @@ func (r *room) run() {
     Info.Println("Room closed:", r.name)
 }
 
+
 func executeCommand(pc *playerConn, command string) {
         Info.Println("Command ", command, " has been executed")
         if command == "question" {
@@ -289,6 +297,7 @@ func executeCommand(pc *playerConn, command string) {
             Info.Println("Question was red ", question)
             // Send questions over all player
             question.PlayerName = pc.player.name
+            question.respondentSex = pc.player.sex
             Info.Println("Question is sent to room ", pc.room.name," question channel")
             Info.Println("Question channel length : ", len(pc.room.questionChannel))
             pc.room.questionChannel <- question
@@ -296,7 +305,7 @@ func executeCommand(pc *playerConn, command string) {
 
         if command == "answers" {
             var err interface{}
-            var answers = make([]Question, roomCapacity - 1, roomCapacity - 1)
+            var answers = make([]Question, roomCapacity / 2, roomCapacity / 2)
             err = pc.ws.ReadJSON(&answers)
 
             if err != nil {
@@ -307,10 +316,10 @@ func executeCommand(pc *playerConn, command string) {
 
             Info.Println("Questions and answers: ", answers)
 
-            // TODO: send questions slice to answersChannel and add it processing.
             pc.room.answerChannel <- answers
         }
 }
+
 
 func (pc *playerConn) receiver() {
     for {
@@ -329,9 +338,9 @@ func (pc *playerConn) receiver() {
     pc.ws.Close()
 }
 
-func newRoom() *room {
+func newRoom() *Room {
     name := RandString(16)
-    room := &room{
+    room := &Room{
         name:        name,
         playerConns: make(map[*playerConn]bool),
         updateAll:   make(chan bool),
@@ -340,8 +349,9 @@ func newRoom() *room {
         questionChannel: make(chan Question),
         answerChannel: make(chan []Question),
         answersMap: make(map[string][]Question, roomCapacity),
-        questions: make([]Question, roomCapacity * 2, roomCapacity * 2),
         questionMap: make(map[string]Question, roomCapacity * 2),
+        men: roomCapacity / 2,
+        women: roomCapacity / 2,
     }
 
     allRooms[name] = room
@@ -354,13 +364,14 @@ func newRoom() *room {
     return room
 }
 
-func newPlayer(username string) *Player{
+func newPlayer(username string, sex bool) *Player{
     return &Player{
         name:        username,
+        sex: sex,
     }
 }
 
-func newPlayerConn(ws *websocket.Conn, player *Player, room *room) *playerConn {
+func newPlayerConn(ws *websocket.Conn, player *Player, room *Room) *playerConn {
     pc := &playerConn{ws, player, room, ""}
     go pc.receiver()
     return pc
@@ -393,6 +404,60 @@ func newPlayerConn(ws *websocket.Conn, player *Player, room *room) *playerConn {
     HTTP handlers
 */
 
+func getOrCreateRoom(username string, sex bool) *Room {
+    var freeRoom *Room
+    freeRoom = nil
+
+    if len(freeRooms) != 0 {
+        for _, room := range freeRooms {
+            if sex == true {
+                if room.men > 0{
+                    room.manLock.Lock()
+
+                    if room.men > 0 {
+                        freeRoom = room
+                        room.men -= 1
+                    }
+                    room.manLock.Unlock()
+                }
+            } else {
+               if room.women > 0 {
+                   room.womanLock.Lock()
+
+                   if room.women > 0 {
+                       freeRoom = room
+                       room.women -= 1
+                   }
+
+                   room.womanLock.Unlock()
+               }
+            }
+        }
+
+        if freeRoom != nil {
+            Info.Println("Selected room is ", freeRoom.name)
+        }
+    }
+
+    if freeRoom == nil {
+        freeRoom = newRoom()
+        Info.Println("Create new room", freeRoom.name)
+
+        if sex == true {
+            Info.Println("Join men rooms")
+            freeRoom.men -= 1
+        } else {
+            Info.Println("Join women room")
+            freeRoom.women -= 1
+        }
+        freeRooms[freeRoom.name] = freeRoom
+        Info.Println("Free rooms ", freeRooms)
+    }
+
+    return freeRoom
+}
+
+
 func homeHandler(c http.ResponseWriter, r *http.Request) {
     Info.Println("Index handler")
     var homeTempl = template.Must(template.ParseFiles("templates/home.html"))
@@ -412,7 +477,7 @@ func homeHandler(c http.ResponseWriter, r *http.Request) {
         Host       string
         RoomsCount int
         Username interface{}
-        rooms map[string]*room
+        rooms map[string]*Room
     }{r.Host, 0, user_name, freeRooms}
     homeTempl.Execute(c, data)
 }
@@ -434,6 +499,7 @@ func loginHandler(c http.ResponseWriter,r *http.Request) {
         r.ParseForm()
         Info.Println("Login POST")
         username := r.Form["username"]
+        sex := r.Form["sex"]
 
         Info.Println("username ", username)
         if username == nil {
@@ -447,6 +513,7 @@ func loginHandler(c http.ResponseWriter,r *http.Request) {
         }
         Info.Println("session ", session)
         session.Values["username"] = username
+        session.Values["sex"] = sex
         session.Save(r, c)
         Info.Println("Redirecting to home page")
         http.Redirect(c, r, "/", 302)
@@ -463,28 +530,27 @@ func joinOrCreateRoom(c http.ResponseWriter,r *http.Request) {
         return
     }
 
-    /*
-        TODO: should be extracted to separate function.
-    */
     session, _ := store.Get(r, "dating")
     user_data := session.Values["username"]
+    sex_value := session.Values["sex"]
 
-    var freeRoom *room
-    if len(freeRooms) != 0 {
-        for _, room := range freeRooms{
-            freeRoom = room
-            break
-        }
-    } else {
-        freeRoom = newRoom()
-        Info.Println("Create new room", freeRoom.name)
-        freeRooms[freeRoom.name] = freeRoom
-        Info.Println("Free rooms ", freeRooms)
-    }
-    Info.Println("Username ", user_data.([]string)[0],
-                " has connected")
+    var freeRoom *Room
+    var sex bool
+
     username := user_data.([]string)[0]
-    player := newPlayer(username)
+    Info.Println("sex value ", sex_value)
+    sex_description := sex_value.([]string)[0]
+
+    if sex_description == "male" {
+        sex = true
+    } else {
+        sex = false
+    }
+
+    freeRoom = getOrCreateRoom(username, sex)
+    Info.Println("Username ", username,
+                " has connected")
+    player := newPlayer(username, sex)
     pConn := newPlayerConn(ws, player, freeRoom)
 
     // Join Player to room
